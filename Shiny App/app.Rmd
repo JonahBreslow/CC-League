@@ -1,0 +1,158 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(janitor)
+
+#cleaning data
+base_allocation_data <- read_excel("C:/Users/10294029/Documents/GitHub/CC-League/Shiny App/Data/Base Allocation Data.xlsx") %>% 
+  clean_names() %>% 
+  mutate(inmates_ftes_credit = replace_na(inmates_ftes_credit, 0),
+         ftes_excluding_inmates_special_admits = ftes_credit - (inmates_ftes_credit + special_admits_ftes_credit)) %>% 
+  group_by(year)
+basic_allocation <- read_excel("C:/Users/10294029/Documents/GitHub/CC-League/Shiny App/Data/Basic Allocations.xlsx") %>% 
+  clean_names()
+
+#Splitting basic_allocation by year
+base_allocation_tables <- group_split(base_allocation_data)
+
+#list of Districts
+districts <- bind_rows(base_allocation_tables) %>%   
+  distinct(district) %>% 
+  pull(district)
+
+#list of years 
+years <-  bind_rows(base_allocation_tables) %>%   
+  distinct(year) %>% 
+  pull(year)
+```
+
+```{r message=FALSE, warning=FALSE}
+# Calculating base allocation 
+for(i in 1:length(base_allocation_tables)){
+  if(i==1){
+    base_allocation <- base_allocation_tables[[i]]
+    
+  } else {
+    base_allocation <- left_join(base_allocation, base_allocation_tables[[i]],
+                                  by = "district")
+  }
+}
+
+base_allocation_projection <- base_allocation %>% 
+  mutate(year_proj = "2019-20",
+         ftes_credit_proj               = ifelse(
+                                                (ftes_credit.y-ftes_credit.x)*(1/3) + (ftes_credit-ftes_credit.y)*(2/3) + ftes_credit > 0,
+                                                (ftes_credit.y-ftes_credit.x)*(1/3) + (ftes_credit-ftes_credit.y)*(2/3) + ftes_credit,
+                                                ftes_credit
+                                               ),
+         ftes_non_credit_proj           = ifelse(
+                                                (ftes_non_credit.y-ftes_non_credit.x)*(1/3) + (ftes_non_credit-ftes_non_credit.y)*(2/3) + ftes_non_credit > 0,
+                                                (ftes_non_credit.y-ftes_non_credit.x)*(1/3) + (ftes_non_credit-ftes_non_credit.y)*(2/3) + ftes_non_credit,
+                                                ftes_non_credit
+                                              ),
+         cdcp_proj                      = ifelse(
+                                                 (cdcp.y-cdcp.x)*(1/3) + (cdcp-cdcp.y)*(2/3) + cdcp > 0,
+                                                 (cdcp.y-cdcp.x)*(1/3) + (cdcp-cdcp.y)*(2/3) + cdcp,
+                                                 cdcp
+                                               ),
+         inmates_ftes_credit_proj       = ifelse(
+                                                 (inmates_ftes_credit.y-inmates_ftes_credit.x)*(1/3) + (inmates_ftes_credit-inmates_ftes_credit.y)*(2/3) + inmates_ftes_credit > 0,
+                                                 (inmates_ftes_credit.y-inmates_ftes_credit.x)*(1/3) + (inmates_ftes_credit-inmates_ftes_credit.y)*(2/3) + inmates_ftes_credit,
+                                                 inmates_ftes_credit
+                                                ),
+        special_admits_ftes_credit_proj = ifelse(
+                                                 (special_admits_ftes_credit.y-special_admits_ftes_credit.x)*(1/3) + (special_admits_ftes_credit-special_admits_ftes_credit.y)*(2/3) + special_admits_ftes_credit > 0,
+                                                 (special_admits_ftes_credit.y-special_admits_ftes_credit.x)*(1/3) + (special_admits_ftes_credit-special_admits_ftes_credit.y)*(2/3) + special_admits_ftes_credit,
+                                                 special_admits_ftes_credit
+                                               ),
+        ftes_excluding_inmates_special_admits_proj = ftes_credit_proj - special_admits_ftes_credit_proj - inmates_ftes_credit_proj
+         ) %>% 
+  select(district, contains("proj")) %>% 
+  rename_all(., .funs = funs(str_replace(., "_proj", "")))
+
+
+#stacking, calculating base allocation
+credit_ftes_rate <- 3988.58617857212
+non_credit_ftes_rate <- 3988.58617857212
+cdcp_rate <- 3988.58617857212
+special_admits_rate <- 3988.58617857212 
+
+base_allocation_projection_stacked <- bind_rows(base_allocation_tables, base_allocation_projection) %>% 
+  mutate(cal_year = as.numeric(str_sub(year, 1, 4))) %>% 
+  filter(year != "2016-17") %>%   
+  group_by(district) %>%
+  arrange(district) %>% 
+  mutate(avg_ftes_credit = mean(ftes_excluding_inmates_special_admits)) %>% 
+  ungroup %>% 
+  filter(year == "2019-20") %>% 
+  mutate(special_admits_ftes_credit = special_admits_ftes_credit+inmates_ftes_credit) %>% 
+  select(district, year, ftes_non_credit, cdcp, avg_ftes_credit, special_admits_ftes_credit) %>% 
+  mutate() %>% 
+  left_join(basic_allocation) %>% 
+  mutate(base_allocation = format(ftes_non_credit*non_credit_ftes_rate + cdcp*cdcp_rate + avg_ftes_credit*credit_ftes_rate + special_admits_ftes_credit*special_admits_rate + basic_allocation,
+         big.mark = ",")) %>% 
+  select(District = district, `Base Allocation` = base_allocation)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(shiny)
+library(shinyWidgets)
+library(DT)
+
+starting_avg_year <- "2018-19"
+    base_allocation_projection_stacked <- bind_rows(base_allocation_tables, base_allocation_projection) %>% 
+    filter(if_else(starting_avg_year=="2018-19",cal_year >= 2018, year "2016-17")) 
+
+#Making Shiny UI
+ui <- fluidPage(
+  # App title ----
+  titlePanel("Student Centered Funding Formula"),
+  # Sidebar layout with input and output definitions ----
+  sidebarLayout(
+    # Sidebar panel for inputs ----
+    sidebarPanel(
+      # Sizing panel
+      width = 2,
+      # Input: Selector for district ----
+      pickerInput("district", "District:",
+                  choices = districts,
+                  selected = districts,
+                  multiple = T,
+                  options=list(`actions-Box`= TRUE,
+                               `selected-text-format` = "count > 1")),
+      selectInput("starting_avg_year", "Starting Average Year:",
+                  choices = c("2018-19" = "2018-19",
+                     "Normal Three Year Average"  = "2016-17"),
+                  selected = "Normal Three Year Average")
+                ),
+    
+    # Main panel for displaying outputs ----
+    mainPanel(
+      
+      # Output: table of basic allocation values ----
+      DT::dataTableOutput("table", width = "50%")
+    )
+  )
+)
+
+
+#Back-end server function
+server <- function(input, output) {
+  
+
+   # Generate table ----
+  output$table <- DT::renderDataTable({
+    base_allocation_projection_stacked %>% filter(District %in% input$district)}
+    ,options = list(pageLength = 25)
+    ,rownames = F)
+}
+
+shinyApp(ui, server)
+
+```
+
