@@ -1,0 +1,703 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+library(tidyverse)
+library(readxl)
+library(janitor)
+options(scipen = 999, browser = "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe")
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+library(scales)
+#### FORMULA INPUT ASSUMPTIONS ###
+cola_2017_18 <- 2.71
+cola_2018_19 <- 3.26
+ftes_growth_rate <- 0.55
+
+#BASE ALLOCATION DOLLAR AMOUNTS
+funds_available_for_distribution <- 6956349082 
+funds_available_for_base_allocation <- funds_available_for_distribution*.7
+funds_available_for_supp_allocation <- funds_available_for_distribution*.2
+funds_available_for_succ_allocation <- funds_available_for_distribution*.1
+
+# credit_ftes_rate <- 3988.58617857212
+non_credit_ftes_rate <- 3456.44149614
+# cdcp_rate <- 5634.5605750409
+# special_admits_rate <- 5634.5605750409
+special_admits_rate_1718 <- 5313
+
+
+#SUPPLEMENTAL ALLOCATION DOLLAR AMOUNTS
+pell_grant_rate <- 929.568797133394000000
+ab540_rate <- 929.568797133394000000
+promise_grant_rate <- 929.568797133394000000
+
+#SUCCESS ALLOCATION POINTS AND DOLLAR AMOUNTS
+ALL_rate <- 572.93879240842 
+EQUITY_rate <-144.385951096799
+
+success_points <- tibble(
+  achievement_type = c("associate_degrees_for_transfers",
+                       "associate_degrees_for_transfers",
+                       "associate_degrees_for_transfers",
+                       "associate_degrees",
+                       "associate_degrees",
+                       "associate_degrees",
+                       "baccalaureate_degrees",
+                       "baccalaureate_degrees",
+                       "baccalaureate_degrees",
+                       "credit_certificates",
+                       "credit_certificates",
+                       "credit_certificates",
+                       "transfer_level_math_and_english",
+                       "transfer_level_math_and_english",
+                       "transfer_level_math_and_english",
+                       "nine_or_more_cte_units",
+                       "nine_or_more_cte_units",
+                       "nine_or_more_cte_units",
+                       "transfers",
+                       "transfers",
+                       "transfers",
+                       "regional_living_wage",
+                       "regional_living_wage",
+                       "regional_living_wage"),
+  student_type = c("All Students",
+                   "Pell Grant Students",
+                   "Promise Grant Students",
+                   "All Students",
+                   "Pell Grant Students",
+                   "Promise Grant Students",
+                   "All Students",
+                   "Pell Grant Students",
+                   "Promise Grant Students",
+                   "All Students",
+                   "Pell Grant Students",
+                   "Promise Grant Students",
+                   "All Students",
+                   "Pell Grant Students",
+                   "Promise Grant Students",
+                   "All Students",
+                   "Pell Grant Students",
+                   "Promise Grant Students",
+                   "All Students",
+                   "Pell Grant Students",
+                   "Promise Grant Students",
+                   "All Students",
+                   "Pell Grant Students",
+                   "Promise Grant Students"),
+  points = c(4,6,4,
+             3,4.5,3,
+             3,4.5,3,
+             2,3,2,
+             2,3,2,
+             1,1.5,1,
+             1.5,2.25,1.5,
+             1,1.5,1)
+)
+
+student_success_rates <- tibble(
+  student_type = c("All Students", "Pell Grant Students","Promise Grant Students"),
+  rate = c(ALL_rate, EQUITY_rate, EQUITY_rate)
+  )
+
+success_rates <- success_points %>% left_join(student_success_rates)
+
+```
+
+```{r message=FALSE, warning=FALSE}
+
+#cleaning base allocation data
+base_allocation_data <- read_excel("C:/Users/10294029/Documents/GitHub/CC-League/Shiny App/Data/Base Allocation Data.xlsx") %>% 
+  clean_names() %>% 
+  mutate(inmates_ftes_credit = replace_na(inmates_ftes_credit, 0),
+         ftes_excluding_inmates_special_admits = ftes_credit - (inmates_ftes_credit + special_admits_ftes_credit)) %>% 
+  group_by(year)
+basic_allocation <- read_excel("C:/Users/10294029/Documents/GitHub/CC-League/Shiny App/Data/Basic Allocations.xlsx") %>% 
+  clean_names()
+
+basic_allocation_cost <- basic_allocation %>%
+  summarise(basic_allocation_total = sum(basic_allocation)) %>% 
+  pull(basic_allocation_total)
+  
+
+#Splitting basic_allocation by year
+base_allocation_tables <- group_split(base_allocation_data)
+
+#list of Districts
+districts <- bind_rows(base_allocation_tables) %>%   
+  distinct(district) %>% 
+  pull(district)
+
+#list of years 
+years <-  bind_rows(base_allocation_tables) %>%   
+  distinct(year) %>% 
+  pull(year)
+
+# Calculating base allocation 
+for(i in 1:length(base_allocation_tables)){
+  if(i==1){
+    base_allocation <- base_allocation_tables[[i]]
+    
+  } else {
+    base_allocation <- left_join(base_allocation, base_allocation_tables[[i]],
+                                  by = "district")
+  }
+}
+
+base_allocation_projection <- base_allocation %>% 
+  mutate(year_proj = "2019-20",
+         # ftes_credit_proj               = ifelse(
+         #                                        (ftes_credit.y-ftes_credit.x)*(1/3) + (ftes_credit-ftes_credit.y)*(2/3) + ftes_credit > 0,
+         #                                        (ftes_credit.y-ftes_credit.x)*(1/3) + (ftes_credit-ftes_credit.y)*(2/3) + ftes_credit,
+         #                                        ftes_credit
+         #                                       ),
+         # ftes_non_credit_proj           = ifelse(
+         #                                        (ftes_non_credit.y-ftes_non_credit.x)*(1/3) + (ftes_non_credit-ftes_non_credit.y)*(2/3) + ftes_non_credit > 0,
+         #                                        (ftes_non_credit.y-ftes_non_credit.x)*(1/3) + (ftes_non_credit-ftes_non_credit.y)*(2/3) + ftes_non_credit,
+         #                                        ftes_non_credit
+         #                                      ),
+         # cdcp_proj                      = ifelse(
+         #                                         (cdcp.y-cdcp.x)*(1/3) + (cdcp-cdcp.y)*(2/3) + cdcp > 0,
+         #                                         (cdcp.y-cdcp.x)*(1/3) + (cdcp-cdcp.y)*(2/3) + cdcp,
+         #                                         cdcp
+         #                                       ),
+         # inmates_ftes_credit_proj       = ifelse(
+         #                                         (inmates_ftes_credit.y-inmates_ftes_credit.x)*(1/3) + (inmates_ftes_credit-inmates_ftes_credit.y)*(2/3) + inmates_ftes_credit > 0,
+         #                                         (inmates_ftes_credit.y-inmates_ftes_credit.x)*(1/3) + (inmates_ftes_credit-inmates_ftes_credit.y)*(2/3) + inmates_ftes_credit,
+         #                                         inmates_ftes_credit
+         #                                        ),
+         # special_admits_ftes_credit_proj = ifelse(
+         #                                          (special_admits_ftes_credit.y-special_admits_ftes_credit.x)*(1/3) + (special_admits_ftes_credit-special_admits_ftes_credit.y)*(2/3) + special_admits_ftes_credit > 0,
+         #                                          (special_admits_ftes_credit.y-special_admits_ftes_credit.x)*(1/3) + (special_admits_ftes_credit-special_admits_ftes_credit.y)*(2/3) + special_admits_ftes_credit,
+         #                                          special_admits_ftes_credit
+         #                                        ),
+         ftes_credit_proj = ftes_credit*(1+ftes_growth_rate/100),
+         ftes_non_credit_proj = ftes_non_credit*(1+ftes_growth_rate/100),
+         cdcp_proj = cdcp*(1+ftes_growth_rate/100),
+         inmates_ftes_credit_proj = inmates_ftes_credit*(1+ftes_growth_rate/100),
+         special_admits_ftes_credit_proj = special_admits_ftes_credit*(1+ftes_growth_rate/100),
+         ftes_excluding_inmates_special_admits_proj = ftes_credit_proj - special_admits_ftes_credit_proj - inmates_ftes_credit_proj
+         ) %>% 
+  select(district, contains("proj")) %>% 
+  rename_all(., .funs = funs(str_replace(., "_proj", "")))
+
+special_admits_inmates_cost <- base_allocation_projection %>% 
+  mutate(special_admits_inmates_ftes = inmates_ftes_credit + special_admits_ftes_credit) %>% 
+  summarise(special_admits_inmates_total = sum(special_admits_inmates_ftes)*special_admits_rate_1718*(1+cola_2017_18/100)*(1+cola_2018_19/100)
+            ) %>%
+  pull(special_admits_inmates_total)
+
+
+credit_ftes_rate <- funds_available_for_base_allocation - basic_allocation_cost - special_admits_inmates_cost
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+supplemental_alloc_data <- read_excel("C:/Users/10294029/Documents/GitHub/CC-League/Shiny App/Data/Supplemental Allocation Data.xlsx") %>% 
+  clean_names()
+
+supplemental_alloc_year <- supplemental_alloc_data %>% 
+  distinct(year) %>% 
+  mutate(n = seq(1:length(year)))
+
+supplemental_alloc_data_split <- group_split(supplemental_alloc_data, year)
+
+
+# Calculating supplemental allocation 
+for(i in 1:length(supplemental_alloc_data_split)){
+  if(i==1){
+    supplemental_alloc_wide <- supplemental_alloc_data_split[[i]]
+    names(supplemental_alloc_wide) <- paste0(names(supplemental_alloc_wide), "_", str_replace(supplemental_alloc_year[i,1], "-","_"))
+    supplemental_alloc_wide <- rename_at(supplemental_alloc_wide,
+                                          .vars = vars(1),
+                                          .funs = funs(str_sub(.,1,str_length('district'))))
+    } else {
+      supplemental_alloc_data_temp <- supplemental_alloc_data_split[[i]]
+      names(supplemental_alloc_data_temp) <- paste0(names(supplemental_alloc_data_temp), "_", str_replace(supplemental_alloc_year[i,1], "-","_"))
+      supplemental_alloc_data_temp <- rename_at(supplemental_alloc_data_temp,
+                                                .vars = vars(1),
+                                                .funs = funs(str_sub(.,1,str_length('district'))))
+      supplemental_alloc_wide <- left_join(supplemental_alloc_wide, supplemental_alloc_data_temp,
+                                  by = "district")
+  }
+}
+
+supplemental_alloc_proj <- supplemental_alloc_wide %>% 
+  mutate(year_proj = "2019-20",
+         pell_grant_recipients_totals_proj = pell_grant_recipients_totals_2017_18 + (pell_grant_recipients_totals_2017_18-pell_grant_recipients_totals_2016_17),
+         ab540_headcount_proj = ab540_headcount_2017_18 + (ab540_headcount_2017_18-ab540_headcount_2016_17),
+         california_promise_grant_recipients_totals_proj = california_promise_grant_recipients_totals_2017_18 + (california_promise_grant_recipients_totals_2017_18-california_promise_grant_recipients_totals_2016_17)) %>%
+  mutate(supplemental_allocation = 
+              pell_grant_recipients_totals_proj*pell_grant_rate + 
+              ab540_headcount_proj*ab540_rate +
+              california_promise_grant_recipients_totals_proj*promise_grant_rate
+         ) %>% 
+  select(District = district, supplemental_allocation)
+
+
+
+```
+
+```{r}
+success_alloc_data <- read_excel("C:/Users/10294029/Documents/GitHub/CC-League/Shiny App/Data/Success Allocation Data.xlsx") %>% 
+  clean_names()
+
+success_alloc_data_year <- success_alloc_data %>% 
+  distinct(year, student_type) %>% 
+  mutate(student_type = case_when(str_detect(student_type, "All")~ "_ALL",
+                                  str_detect(student_type, "Pell")~ "_PELL",
+                                  TRUE ~ "_PROMISE"),
+         year = paste0(year, student_type)) %>% 
+  distinct(year) %>% 
+  mutate(n = row_number())
+
+success_alloc_data_split <- group_split(success_alloc_data, year, student_type)
+
+# Calculating supplemental allocation 
+for(i in 1:length(success_alloc_data_split)){
+  if(i==1){
+    success_alloc_wide <- success_alloc_data_split[[i]]
+    names(success_alloc_wide) <- paste0(names(success_alloc_wide), "_", str_replace(success_alloc_data_year[i,1], "-","_"))
+    success_alloc_wide <- rename_at(success_alloc_wide,
+                                          .vars = vars(1),
+                                          .funs = funs(str_sub(.,1,str_length('district'))))
+    } else {
+      success_alloc_temp <- success_alloc_data_split[[i]]
+      names(success_alloc_temp) <- paste0(names(success_alloc_temp), "_", str_replace(success_alloc_data_year[i,1], "-","_"))
+      success_alloc_temp <- rename_at(success_alloc_temp,
+                                                .vars = vars(1),
+                                                .funs = funs(str_sub(.,1,str_length('district'))))
+      success_alloc_wide <- left_join(success_alloc_wide, success_alloc_temp,
+                                  by = "district")
+  }
+}
+
+success_alloc_proj <- success_alloc_wide %>% 
+  mutate(year_proj_ALL = "2019-20",
+         year_proj_PELL = "2019-20",
+         year_proj_PROMISE = "2019-20",
+         
+         associate_degrees_for_transfers_proj_ALL = associate_degrees_for_transfers_2017_18_ALL + (associate_degrees_for_transfers_2017_18_ALL - associate_degrees_for_transfers_2016_17_ALL),
+         associate_degrees_for_transfers_proj_PELL = associate_degrees_for_transfers_2017_18_PELL + (associate_degrees_for_transfers_2017_18_PELL - associate_degrees_for_transfers_2016_17_PELL),
+         associate_degrees_for_transfers_proj_PROMISE = associate_degrees_for_transfers_2017_18_PROMISE + (associate_degrees_for_transfers_2017_18_PROMISE - associate_degrees_for_transfers_2016_17_PROMISE),
+
+         associate_degrees_proj_ALL = associate_degrees_2017_18_ALL + (associate_degrees_2017_18_ALL - associate_degrees_2016_17_ALL),
+         associate_degrees_proj_PELL = associate_degrees_2017_18_PELL + (associate_degrees_2017_18_PELL - associate_degrees_2016_17_PELL),
+         associate_degrees_proj_PROMISE = associate_degrees_2017_18_PROMISE + (associate_degrees_2017_18_PROMISE - associate_degrees_2016_17_PROMISE),
+         
+         baccalaureate_degrees_proj_ALL = baccalaureate_degrees_2017_18_ALL + (baccalaureate_degrees_2017_18_ALL - baccalaureate_degrees_2016_17_ALL),
+         baccalaureate_degrees_proj_PELL = baccalaureate_degrees_2017_18_PELL + (baccalaureate_degrees_2017_18_PELL - baccalaureate_degrees_2016_17_PELL),
+         baccalaureate_degrees_proj_PROMISE = baccalaureate_degrees_2017_18_PELL + (baccalaureate_degrees_2017_18_PELL- baccalaureate_degrees_2016_17_PELL),
+         
+         credit_certificates_proj_ALL = credit_certificates_2017_18_ALL + (credit_certificates_2017_18_ALL - credit_certificates_2016_17_ALL),
+         credit_certificates_proj_PELL = credit_certificates_2017_18_PELL + (credit_certificates_2017_18_PELL - credit_certificates_2016_17_PELL),
+         credit_certificates_proj_PROMISE = credit_certificates_2017_18_PROMISE + (credit_certificates_2017_18_PROMISE - credit_certificates_2016_17_PROMISE),
+         
+         transfer_level_math_and_english_proj_ALL = transfer_level_math_and_english_2017_18_ALL + (transfer_level_math_and_english_2017_18_ALL - transfer_level_math_and_english_2016_17_ALL),
+         transfer_level_math_and_english_proj_PELL = transfer_level_math_and_english_2017_18_PELL + (transfer_level_math_and_english_2017_18_PELL - transfer_level_math_and_english_2016_17_PELL),
+         transfer_level_math_and_english_proj_PROMISE = transfer_level_math_and_english_2017_18_PROMISE + (transfer_level_math_and_english_2017_18_PROMISE - transfer_level_math_and_english_2016_17_PROMISE),
+         
+         nine_or_more_cte_units_proj_ALL = nine_or_more_cte_units_2017_18_ALL + (nine_or_more_cte_units_2017_18_ALL - nine_or_more_cte_units_2016_17_ALL),
+         nine_or_more_cte_units_proj_PELL = nine_or_more_cte_units_2017_18_PELL + (nine_or_more_cte_units_2017_18_PELL - nine_or_more_cte_units_2016_17_PELL),
+         nine_or_more_cte_units_proj_PROMISE = nine_or_more_cte_units_2017_18_PROMISE + (nine_or_more_cte_units_2017_18_PROMISE - nine_or_more_cte_units_2016_17_PROMISE),
+         
+         transfers_proj_ALL = transfers_2017_18_ALL + (transfers_2017_18_ALL - transfers_2016_17_ALL),
+         transfers_proj_PELL = transfers_2017_18_PELL + (transfers_2017_18_PELL - transfers_2016_17_PELL),
+         transfers_proj_PROMISE = transfers_2017_18_PROMISE + (transfers_2017_18_PROMISE - transfers_2016_17_PROMISE),
+         
+         regional_living_wage_proj_ALL = regional_living_wage_2017_18_ALL + (regional_living_wage_2017_18_ALL - regional_living_wage_2016_17_ALL),
+         regional_living_wage_proj_PELL = regional_living_wage_2017_18_PELL + (regional_living_wage_2017_18_PELL - regional_living_wage_2016_17_PELL),
+         regional_living_wage_proj_PROMISE = regional_living_wage_2017_18_PROMISE + (regional_living_wage_2017_18_PROMISE - regional_living_wage_2016_17_PROMISE)
+        ) %>% 
+  select(district, contains("_proj_")) %>% 
+  rename_at(.,
+            .vars = vars(contains("_proj_")),
+            .funs = funs(str_replace(., "_proj", "")))
+
+success_alloc_all_proj <- success_alloc_proj %>% 
+  select(district, contains("_ALL")) %>% 
+  rename_at(.,
+            .vars = vars(contains("_ALL")),
+            .funs = funs(str_replace(., "_ALL", ""))) %>% 
+  mutate(student_type = "All Students")
+
+success_alloc_pell_proj <- success_alloc_proj %>% 
+  select(district, contains("_PELL")) %>% 
+  rename_at(.,
+            .vars = vars(contains("_PELL")),
+            .funs = funs(str_replace(., "_PELL", ""))) %>% 
+  mutate(student_type = "Pell Grant Students")
+
+success_alloc_promise_proj <- success_alloc_proj %>% 
+  select(district, contains("_PROMISE")) %>% 
+  rename_at(.,
+            .vars = vars(contains("_PROMISE")),
+            .funs = funs(str_replace(., "_PROMISE", ""))) %>% 
+  mutate(student_type = "Promise Grant Students")
+
+success_alloc_proj_stacked <- bind_rows(success_alloc_data_split, success_alloc_all_proj, success_alloc_pell_proj, success_alloc_promise_proj)
+
+
+#THIS STEP WILL NEED TO BE EVALUATED. RIGHT NOW WE ARE USING 3 NON-CONTINUOUS YEARS TO CALCULATE THE THREE-YEAR AVERAGE, WHICH SEEMS INAPPROPRIATE
+success_alloc_to_join <- success_alloc_proj_stacked %>%
+  arrange(district, student_type, year) %>% 
+  select(-year) %>% 
+  group_by(district, student_type) %>% 
+  summarize_all(., mean) %>% 
+  gather(key = "achievement_type", value = "n_ftes", -district,-student_type) %>% 
+  left_join(success_rates) %>% 
+  mutate(success_alloc = n_ftes*points*rate) %>%
+  group_by(district) %>% 
+  summarise(success_allocation = sum(success_alloc)) %>% 
+  rename(District = district)
+
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=TRUE}
+apportionment_2017_18 <- read_excel("C:/Users/10294029/Documents/GitHub/CC-League/Shiny App/Data/2017-18 Apportionments.xlsx") %>% 
+  clean_names() %>% 
+  select(District = district, apportionment_2017_18)
+
+# apportionment_2017_18
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+
+basic_aid_districts <- c("Marin", "MiraCosta", "San Jose", "San Mateo", "South Orange County", "West Valley-Mission2")
+
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(shiny)
+library(shinyWidgets)
+library(DT)
+library(plotly)
+
+
+#Making Shiny UI
+ui <- fluidPage(
+  titlePanel("Student Centered Funding Formula"),
+  sidebarLayout(
+    sidebarPanel(
+      width = 3,
+      pickerInput("district", "District:",
+                  choices = districts,
+                  selected = districts,
+                  multiple = T,
+                  options=list(`actions-Box`= TRUE,
+                               `selected-text-format` = "count > 1")),
+      selectInput("starting_avg_year", "Starting Average Year:",
+                  choices = c("2018-19" = "2018-19",
+                     "3-Year Average"  = "2016-17"),
+                  selected = "2016-17"),
+      numericInput("credit_ftes_rate", "Credit FTES Rate:",
+                  min = 0, max = 6000, value = credit_ftes_rate),
+      numericInput("non_credit_ftes_rate", "Non-Credit FTES Rate:",
+                  min = 0, max = 6000, value = non_credit_ftes_rate ),
+      numericInput("cdcp_rate", "CDCP Rate:",
+                  min = 0, max = 6000, value = cdcp_rate),
+      numericInput("special_admits_rate", "Inmate/Special Admit Rate:",
+                  min = 0, max = 6000, value = special_admits_rate),
+      sliderInput("cola_2017_18", "2017-18 COLA:",
+                  min = 0.00, max = 4.00, value = cola_2017_18, post = "%", step = 0.01),
+      sliderInput("cola_2018_19", "2018-19 COLA:",
+                  min = 0.00, max = 4.00, value = cola_2018_19, post = "%", step = 0.01)
+                ),
+    
+    
+      mainPanel(
+        
+        tabsetPanel(
+          type = "tabs",
+          tabPanel("Apportionment Calculator", DT::dataTableOutput("summary_table", width = "20%"), DT::dataTableOutput("base_table"), class = 'rightAlign')
+          ,tabPanel("Winner and Losers", plotlyOutput("apportionment_hist", height = "100%"))
+        )
+      
+      
+      )
+  )
+, hr()
+,print('[1] Indicates a Basic Aid District. For these six districts, "Hold Harmless" amounts are not calculated and their 2019-20 SCFF Apportionment is equal to their 2019-20 Minimun SCFF Apportionment.')
+
+)
+
+
+#Back-end server function
+server <- function(input, output) {
+  
+ 
+   # Summary Table ----
+  output$summary_table <- DT::renderDataTable({
+                                             if(input$starting_avg_year =="2018-19"){
+                                              base_allocation_projection_stacked <- bind_rows(base_allocation_tables, base_allocation_projection) %>% 
+                                                mutate(cal_year = as.numeric(str_sub(year, 1, 4))) %>% 
+                                                filter(cal_year >=2018)
+                                            }else{
+                                              base_allocation_projection_stacked <- bind_rows(base_allocation_tables, base_allocation_projection) %>% 
+                                                mutate(cal_year = as.numeric(str_sub(year, 1, 4))) %>% 
+                                                filter(cal_year >2016)
+                                            }
+    
+ 
+                                            base_allocation_projection_stacked %>% 
+                                              # filter(district %in% input$district) %>%
+                                              group_by(district) %>%
+                                              arrange(district) %>% 
+                                              mutate(avg_ftes_credit = mean(ftes_excluding_inmates_special_admits)) %>% 
+                                              ungroup %>% 
+                                              filter(year == "2019-20") %>% 
+                                              mutate(special_admits_ftes_credit = special_admits_ftes_credit+inmates_ftes_credit) %>% 
+                                              select(district, year, ftes_non_credit, cdcp, avg_ftes_credit, special_admits_ftes_credit) %>% 
+                                              mutate() %>% 
+                                              left_join(basic_allocation) %>% 
+                                              mutate(base_allocation = ftes_non_credit*input$non_credit_ftes_rate + 
+                                                                                cdcp*input$cdcp_rate + 
+                                                                                avg_ftes_credit*input$credit_ftes_rate + 
+                                                                                special_admits_ftes_credit*input$special_admits_rate + 
+                                                                                basic_allocation) %>% 
+                                              select(District = district, base_allocation) %>% 
+                                              left_join(supplemental_alloc_proj) %>% 
+                                              left_join(success_alloc_to_join) %>%
+                                              left_join(apportionment_2017_18) %>%
+                                              mutate(scff_apportionment_2019_20 = base_allocation + supplemental_allocation + success_allocation) %>%
+                                              mutate(`Base Allocation` = format( base_allocation , big.mark = ","),
+                                                     `Supplemental Allocation` = format(supplemental_allocation, big.mark = ","),
+                                                     `Success Allocation` = format(success_allocation, big.mark = ",", digits = 0),
+                                                     `2019-20 SCFF Minimum Apportionment` = format(scff_apportionment_2019_20, big.mark = ","),
+                                                     `2017-18 Apportionment (Grown at COLA to 2019-20)` = format(apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100), big.mark = ","),
+                                                     # `Basic Aid District` = if_else(District %in% basic_aid_districts, "Yes",""),
+                                                     `Hold Harmless` = str_replace(format(case_when(District %in% basic_aid_districts ~ 0,
+                                                                                                      apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100) > scff_apportionment_2019_20 ~
+                                                                                                      apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100) - scff_apportionment_2019_20,
+                                                                                                    TRUE ~ 0), 
+                                                                                          big.mark = ",", digits = 0, scientific = F),
+                                                                                   pattern = "\\b0\\b", "-"),
+                                                     `2019-20 SCFF Aportionment` = case_when(District %in% basic_aid_districts ~ scff_apportionment_2019_20,
+                                                                                     apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100) > scff_apportionment_2019_20 ~
+                                                                                      scff_apportionment_2019_20 + apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100) - scff_apportionment_2019_20,
+                                                                                                    TRUE ~ scff_apportionment_2019_20)
+                                              ) %>% 
+                                              summarize(`Total Allocation` = format(sum(`2019-20 SCFF Aportionment`), big.mark = ",", digits = 0))
+                                              
+                                          },rownames = F 
+                                          , options = list(dom = 't',
+                                                           columnDefs = list(list(width = '200px', targets = "_all"),
+                                                                           list(class = "dt-center", targets = "_all")
+                                                                        )
+                                          )
+  )
+  
+   # Generate table ----
+  output$base_table <- DT::renderDataTable({
+                                            if(input$starting_avg_year =="2018-19"){
+                                              base_allocation_projection_stacked <- bind_rows(base_allocation_tables, base_allocation_projection) %>% 
+                                                mutate(cal_year = as.numeric(str_sub(year, 1, 4))) %>% 
+                                                filter(cal_year >=2018)
+                                            }else{
+                                              base_allocation_projection_stacked <- bind_rows(base_allocation_tables, base_allocation_projection) %>% 
+                                                mutate(cal_year = as.numeric(str_sub(year, 1, 4))) %>% 
+                                                filter(cal_year >2016)
+                                            }
+                                            
+                                            
+                                            
+                                           final_allocation <- base_allocation_projection_stacked %>% 
+                                              filter(district %in% input$district) %>%
+                                              group_by(district) %>%
+                                              arrange(district) %>% 
+                                              mutate(avg_ftes_credit = mean(ftes_excluding_inmates_special_admits)) %>% 
+                                              ungroup %>% 
+                                              filter(year == "2019-20") %>% 
+                                              mutate(special_admits_ftes_credit = special_admits_ftes_credit+inmates_ftes_credit) %>% 
+                                              select(district, year, ftes_non_credit, cdcp, avg_ftes_credit, special_admits_ftes_credit) %>% 
+                                              mutate() %>% 
+                                              left_join(basic_allocation) %>% 
+                                              mutate(base_allocation = ftes_non_credit*input$non_credit_ftes_rate + 
+                                                                                cdcp*input$cdcp_rate + 
+                                                                                avg_ftes_credit*input$credit_ftes_rate + 
+                                                                                special_admits_ftes_credit*input$special_admits_rate + 
+                                                                                basic_allocation) %>% 
+                                              select(District = district, base_allocation) %>% 
+                                              left_join(supplemental_alloc_proj) %>% 
+                                              left_join(success_alloc_to_join) %>%
+                                              left_join(apportionment_2017_18) %>%
+                                              mutate(scff_apportionment_2019_20 = base_allocation + supplemental_allocation + success_allocation) %>%
+                                              mutate(`Base Allocation` = format( base_allocation , big.mark = ","),
+                                                     `Supplemental Allocation` = format(supplemental_allocation, big.mark = ","),
+                                                     `Success Allocation` = format(success_allocation, big.mark = ",", digits = 0),
+                                                     `2019-20 SCFF Minimum Apportionment` = format(scff_apportionment_2019_20, big.mark = ","),
+                                                     `2017-18 Apportionment (Grown at COLA to 2019-20)` = format(apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100), big.mark = ","),
+                                                     # `Basic Aid District` = if_else(District %in% basic_aid_districts, "Yes",""),
+                                                     `Hold Harmless` = str_replace(format(case_when(District %in% basic_aid_districts ~ 0,
+                                                                                                      apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100) > scff_apportionment_2019_20 ~
+                                                                                                      apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100) - scff_apportionment_2019_20,
+                                                                                                    TRUE ~ 0), 
+                                                                                          big.mark = ",", digits = 0, scientific = F),
+                                                                                   pattern = "\\b0\\b", "-"),
+                                                     `2019-20 SCFF Aportionment` = str_replace(
+                                                       format(case_when(District %in% basic_aid_districts ~ base_allocation + supplemental_allocation + success_allocation,
+                                                                apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100) > base_allocation + supplemental_allocation + success_allocation ~
+                                                                apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100),
+                                                                TRUE ~ base_allocation + supplemental_allocation + success_allocation) 
+                                                                                          ,big.mark = ",", digits = 0, scientific = F)
+                                                                                   ,pattern = "\\b0\\b", "-"
+                                                       )
+                                                     
+                                                     )%>%
+                                              select(-contains("_"))
+                                           
+                                              final_allocation$`2019-20 SCFF Aportionment` <- paste0("<b>", final_allocation$`2019-20 SCFF Aportionment`, "</b>")
+                                           
+                                              final_allocation$District <- if_else(final_allocation$District %in% basic_aid_districts,
+                                                                                   paste0(final_allocation$District,"<sup>[1]</sup>"),
+                                                                                   final_allocation$District)
+                                                                              
+                                              final_allocation
+                                              
+                                          }
+                                    , rownames = F
+                                    , escape = FALSE
+                                    , options = list(pageLength = 10, searching = FALSE, lengthChange=FALSE
+                                                     ,columnDefs = list(list(width = '200px', targets = "_all"),
+                                                                        list(class = "dt-right", targets =c(1:7))
+                                                                        )
+
+                                                     )
+                                          
+
+                                          )
+  
+                                          
+  
+  # Generate histogram
+  output$apportionment_hist <- renderPlotly({
+                                            if(input$starting_avg_year =="2018-19"){
+                                              base_allocation_projection_stacked <- bind_rows(base_allocation_tables, base_allocation_projection) %>% 
+                                                mutate(cal_year = as.numeric(str_sub(year, 1, 4))) %>% 
+                                                filter(cal_year >=2018)
+                                            }else{
+                                              base_allocation_projection_stacked <- bind_rows(base_allocation_tables, base_allocation_projection) %>% 
+                                                mutate(cal_year = as.numeric(str_sub(year, 1, 4))) %>% 
+                                                filter(cal_year >2016)
+                                            }
+                                            
+                                            
+                                            
+                                            histogram_data <- base_allocation_projection_stacked %>% 
+                                              filter(district %in% input$district) %>%
+                                              group_by(district) %>%
+                                              arrange(district) %>% 
+                                              mutate(avg_ftes_credit = mean(ftes_excluding_inmates_special_admits)) %>% 
+                                              ungroup %>% 
+                                              filter(year == "2019-20") %>% 
+                                              mutate(special_admits_ftes_credit = special_admits_ftes_credit+inmates_ftes_credit) %>% 
+                                              select(district, year, ftes_non_credit, cdcp, avg_ftes_credit, special_admits_ftes_credit) %>% 
+                                              mutate() %>% 
+                                              left_join(basic_allocation) %>% 
+                                              mutate(base_allocation = ftes_non_credit*input$non_credit_ftes_rate + 
+                                                                                cdcp*input$cdcp_rate + 
+                                                                                avg_ftes_credit*input$credit_ftes_rate + 
+                                                                                special_admits_ftes_credit*input$special_admits_rate + 
+                                                                                basic_allocation) %>% 
+                                              select(District = district, base_allocation) %>% 
+                                              left_join(supplemental_alloc_proj) %>% 
+                                              left_join(success_alloc_to_join) %>%
+                                              left_join(apportionment_2017_18) %>%
+                                              mutate(scff_apportionment_2019_20 = base_allocation + supplemental_allocation + success_allocation) %>%
+                                              mutate(apportionment_difference = scff_apportionment_2019_20 - (apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100))) %>% 
+                                              mutate(apportionment_2017_18_grown_at_cola = apportionment_2017_18*(1+(input$cola_2017_18)/100)*(1+(input$cola_2018_19)/100))
+                                            
+                                            # ggplot(histogram_data, aes(x=apportionment_2017_18_grown_at_cola, y=apportionment_difference, label=District)) + 
+                                            #   geom_point(color = "blue", fill = "blue") +
+                                            #   scale_x_continuous(labels = scales::comma)+
+                                            #   theme_bw()
+                                            # hist(histogram_data$apportionment_difference, bins col = "#75AADB", border = "white", xlab = "2019-20 SCFF Excess Allocation",main = "Apportionment Changes")
+                                            
+                                            districts_improved <- histogram_data %>% 
+                                              filter(apportionment_difference>=0,
+                                                     !District %in% basic_aid_districts)
+                                            
+                                            districts_basic_aid <- histogram_data %>% 
+                                              filter(District %in% basic_aid_districts)
+                                            
+                                            districts_harmed <- histogram_data %>% 
+                                              filter(apportionment_difference < 0,
+                                                     !District %in% basic_aid_districts)
+                                            
+                                            plot_ly(type = 'scatter', mode = 'markers') %>%
+                                                  add_trace(
+                                                    name = "Districts Receiving More Money",
+                                                    x = districts_improved$apportionment_2017_18_grown_at_cola,
+                                                    y = districts_improved$apportionment_difference,
+                                                    marker = list(color="blue",
+                                                                  line = list(color = "black",
+                                                                              width = 1)),
+                                                    text = districts_improved$District,
+                                                    hovertemplate = paste('<b>%{text}</b>',
+                                                                          '<br><b>2017-18 Apportionment Grown At COLA</b>: %{x:$,.0f}<br>',
+                                                                          '<br><b>SCFF Excess Apportionment</b>: %{y:$,.0f}<br>'),
+                                                    showlegend = T
+                                                  ) %>%
+                                                  add_trace(
+                                                    name =  "Basic Aid Districts",
+                                                    x = districts_basic_aid$apportionment_2017_18_grown_at_cola,
+                                                    y = districts_basic_aid$apportionment_difference,
+                                                    marker = list(color="white",
+                                                                  line = list(color = "black",
+                                                                              width = 1)),
+                                                    text = districts_basic_aid$District,
+                                                    hovertemplate = paste('<b>%{text}</b>',
+                                                                          '<br><b>2017-18 Apportionment Grown At COLA</b>: %{x:$,.0f}<br>',
+                                                                          '<br><b>SCFF Excess Apportionment</b>: %{y:$,.0f}<br>'),
+                                                    showlegend = T
+                                                  ) %>%
+                                                  add_trace(
+                                                    name = "Districts Receiving Less Money",
+                                                    x = districts_harmed$apportionment_2017_18_grown_at_cola,
+                                                    y = districts_harmed$apportionment_difference,
+                                                    marker = list(color="orange",
+                                                                  line = list(color = "black",
+                                                                              width = 1)),
+                                                    text = districts_harmed$District,
+                                                    hovertemplate = paste('<b>%{text}</b>',
+                                                                          '<br><b>2017-18 Apportionment Grown At COLA</b>: %{x:$,.0f}<br>',
+                                                                          '<br><b>SCFF Excess Apportionment</b>: %{y:$,.0f}<br>'),
+                                                    showlegend = T
+                                                  ) %>%
+                                                  layout(
+                                                    xaxis = list(
+                                                      zeroline = F,
+                                                      title = "2017-18 Apportionment Grown At COLA to 2019-20"
+                                                    ),
+                                                    yaxis = list(
+                                                      # hoverformat = '.2f',
+                                                      title = "SCFF Excess Apportionment" 
+                                                    )
+                                                  )
+                                    
+
+                                          }
+                                          )
+    
+  }
+
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+shinyApp(ui, server, options = list(launch.browser=T))
+
+```
+
+
+
